@@ -93,6 +93,10 @@ resource "aws_iam_role" "appsync_datasource_role" {
     name = "appsync_inline"
     policy = data.aws_iam_policy_document.appsync_inline_policy.json
   }
+  inline_policy {
+    name = "appsync_invoke_lambda_inline"
+    policy = data.aws_iam_policy_document.appsync_invoke_lambda_inline_policy.json
+  }
 }
 
 data "aws_iam_policy_document" "appsync_inline_policy" {
@@ -100,6 +104,15 @@ data "aws_iam_policy_document" "appsync_inline_policy" {
     actions   = ["dynamodb:Query"]
     resources = [
       "${aws_dynamodb_table.tasks_table.arn}/index/byOwner"
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "appsync_invoke_lambda_inline_policy" {
+  statement {
+    actions   = ["lambda:InvokeFunction"]
+    resources = [
+      aws_lambda_function.add_task_lambda_function.arn
     ]
   }
 }
@@ -166,13 +179,18 @@ resource "aws_lambda_function" "add_task_lambda_function" {
   handler       = "index.addTask"
   runtime       = "nodejs20.x"
   timeout = 30
+  environment {
+    variables = {
+      TASKS_TABLE = aws_dynamodb_table.tasks_table.name
+    }
+  }
 }
 
 resource "aws_appsync_datasource" "add_task_datasource" {
   api_id           = aws_appsync_graphql_api.graphql_api.id
   name             = "AddTaskDataSource"
   type             = "AWS_LAMBDA"
-  service_role_arn = aws_iam_role.lambda_execution_role.arn
+  service_role_arn = aws_iam_role.appsync_datasource_role.arn
   lambda_config {
     function_arn = aws_lambda_function.add_task_lambda_function.arn
   }
