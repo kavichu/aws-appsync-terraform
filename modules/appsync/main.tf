@@ -36,7 +36,7 @@ resource "aws_dynamodb_table" "users_table" {
 
 resource "aws_cognito_user_pool" "user_pool" {
   name                     = "UserPool"
-  alias_attributes         = ["email"]
+  username_attributes = [ "email" ]
   auto_verified_attributes = ["email"]
   password_policy {
     minimum_length    = 8
@@ -89,6 +89,19 @@ resource "aws_iam_role" "appsync_datasource_role" {
       },
     ]
   })
+  inline_policy {
+    name = "appsync_inline"
+    policy = data.aws_iam_policy_document.appsync_inline_policy.json
+  }
+}
+
+data "aws_iam_policy_document" "appsync_inline_policy" {
+  statement {
+    actions   = ["dynamodb:Query"]
+    resources = [
+      "${aws_dynamodb_table.tasks_table.arn}/index/byOwner"
+    ]
+  }
 }
 
 resource "aws_appsync_datasource" "tasks_table_datasource" {
@@ -102,7 +115,7 @@ resource "aws_appsync_datasource" "tasks_table_datasource" {
   }
 }
 
-resource "aws_appsync_resolver" "get_tasks_resoulver" {
+resource "aws_appsync_resolver" "get_tasks_resolver" {
   api_id = aws_appsync_graphql_api.graphql_api.id
   type   = "Query"
   field  = "getTasks"
@@ -111,6 +124,7 @@ resource "aws_appsync_resolver" "get_tasks_resoulver" {
     runtime_version = "1.0.0"
   }
   code = file("resolvers/getTasks.js")
+  data_source = aws_appsync_datasource.tasks_table_datasource.name
 }
 
 resource "aws_iam_role" "lambda_execution_role" {
@@ -128,6 +142,21 @@ resource "aws_iam_role" "lambda_execution_role" {
     ]
   })
   managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
+
+  inline_policy {
+    name = "lambda_inline"
+    policy = data.aws_iam_policy_document.lambda_inline_policy.json
+  }
+}
+
+data "aws_iam_policy_document" "lambda_inline_policy" {
+  statement {
+    actions   = ["dynamodb:PutItem"]
+    resources = [
+      aws_dynamodb_table.tasks_table.arn,
+      aws_dynamodb_table.users_table.arn
+    ]
+  }
 }
 
 resource "aws_lambda_function" "add_task_lambda_function" {
@@ -139,6 +168,23 @@ resource "aws_lambda_function" "add_task_lambda_function" {
   timeout = 30
 }
 
+resource "aws_appsync_datasource" "add_task_datasource" {
+  api_id           = aws_appsync_graphql_api.graphql_api.id
+  name             = "AddTaskDataSource"
+  type             = "AWS_LAMBDA"
+  service_role_arn = aws_iam_role.lambda_execution_role.arn
+  lambda_config {
+    function_arn = aws_lambda_function.add_task_lambda_function.arn
+  }
+}
+
+resource "aws_appsync_resolver" "add_task_resolver" {
+  api_id = aws_appsync_graphql_api.graphql_api.id
+  type   = "Mutation"
+  field  = "addTask"
+  data_source = aws_appsync_datasource.add_task_datasource.name
+}
+
 resource "aws_lambda_function" "post_confirmation_lambda_function" {
   function_name = "postConfirmationLambdaFunction"
   filename      = "post_confirmation_lambda_function.zip"
@@ -146,4 +192,35 @@ resource "aws_lambda_function" "post_confirmation_lambda_function" {
   handler       = "index.postConfirmation"
   runtime       = "nodejs20.x"
   timeout = 30
+  environment {
+    variables = {
+      USERS_TABLE = aws_dynamodb_table.users_table.name
+    }
+  }
+}
+
+resource "aws_lambda_permission" "allow_cognito" {
+  statement_id  = "AllowExecutionFromCloudWatch"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.post_confirmation_lambda_function.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.user_pool.arn
+}
+
+module "application_user_pool_id" {
+  source  = "terraform-aws-modules/ssm-parameter/aws"
+  name  = "/Application/UserPoolId"
+  value = aws_cognito_user_pool.user_pool.id
+}
+
+module "application_user_pool_client_id" {
+  source  = "terraform-aws-modules/ssm-parameter/aws"
+  name  = "/Application/UserPoolClientId"
+  value = aws_cognito_user_pool_client.user_pool_client.id
+}
+
+module "application_graphql_endpoint" {
+  source  = "terraform-aws-modules/ssm-parameter/aws"
+  name  = "/Application/GraphQLEndpointUrl"
+  value = aws_appsync_graphql_api.graphql_api.uris["GRAPHQL"]
 }
