@@ -1,0 +1,23 @@
+type Task {
+  id: ID!
+  text: String!
+  owner: ID!
+  createdAt: String!
+}
+
+type TaskConnection {
+	items: [Task!]
+	nextToken: String
+}
+
+input TaskInput {
+  text: String!
+}
+
+type Query {
+  getTasks(limit: Int, nextToken: String): TaskConnection!
+}
+
+type Mutation {
+  addTask(input: TaskInput!): Task!
+}
