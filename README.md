@@ -6,6 +6,14 @@
 
 ![AppSync](images/architecture.png)
 
+# Requirements
+- An S3 bucket to use as the backend for terraform
+
+# Initialize the working directory
+```sh
+terraform init -backend-config="bucket=<YOUR_BACKEND_S3_BUCKET_NAME>"
+```
+
 # Deploy
 
 ```sh
