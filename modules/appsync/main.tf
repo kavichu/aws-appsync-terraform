@@ -75,69 +75,14 @@ resource "aws_appsync_graphql_api" "graphql_api" {
 
 }
 
-resource "aws_iam_role" "appsync_datasource_role" {
-  name = "appsync_datasource_role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "appsync.amazonaws.com"
-        }
-      },
-    ]
-  })
-  inline_policy {
-    name   = "appsync_inline"
-    policy = data.aws_iam_policy_document.appsync_inline_policy.json
-  }
-  inline_policy {
-    name   = "appsync_invoke_lambda_inline"
-    policy = data.aws_iam_policy_document.appsync_invoke_lambda_inline_policy.json
-  }
-}
-
-data "aws_iam_policy_document" "appsync_inline_policy" {
+data "aws_iam_policy_document" "lambda_inline_policy" {
   statement {
-    actions = ["dynamodb:Query"]
+    actions = ["dynamodb:PutItem"]
     resources = [
-      "${aws_dynamodb_table.tasks_table.arn}/index/byOwner"
+      aws_dynamodb_table.tasks_table.arn,
+      aws_dynamodb_table.users_table.arn
     ]
   }
-}
-
-data "aws_iam_policy_document" "appsync_invoke_lambda_inline_policy" {
-  statement {
-    actions = ["lambda:InvokeFunction"]
-    resources = [
-      aws_lambda_function.add_task_lambda_function.arn
-    ]
-  }
-}
-
-resource "aws_appsync_datasource" "tasks_table_datasource" {
-  api_id           = aws_appsync_graphql_api.graphql_api.id
-  name             = "TasksTableDataSource"
-  type             = "AMAZON_DYNAMODB"
-  service_role_arn = aws_iam_role.appsync_datasource_role.arn
-  dynamodb_config {
-    table_name = aws_dynamodb_table.tasks_table.name
-    region     = "us-east-1"
-  }
-}
-
-resource "aws_appsync_resolver" "get_tasks_resolver" {
-  api_id = aws_appsync_graphql_api.graphql_api.id
-  type   = "Query"
-  field  = "getTasks"
-  runtime {
-    name            = "APPSYNC_JS"
-    runtime_version = "1.0.0"
-  }
-  code        = file("resolvers/getTasks.js")
-  data_source = aws_appsync_datasource.tasks_table_datasource.name
 }
 
 resource "aws_iam_role" "lambda_execution_role" {
@@ -162,16 +107,6 @@ resource "aws_iam_role" "lambda_execution_role" {
   }
 }
 
-data "aws_iam_policy_document" "lambda_inline_policy" {
-  statement {
-    actions = ["dynamodb:PutItem"]
-    resources = [
-      aws_dynamodb_table.tasks_table.arn,
-      aws_dynamodb_table.users_table.arn
-    ]
-  }
-}
-
 resource "aws_lambda_function" "add_task_lambda_function" {
   function_name = "addTaskLambdaFunction"
   filename      = "add_task_lambda_function.zip"
@@ -184,6 +119,71 @@ resource "aws_lambda_function" "add_task_lambda_function" {
       TASKS_TABLE = aws_dynamodb_table.tasks_table.name
     }
   }
+}
+
+data "aws_iam_policy_document" "appsync_query_index_inline" {
+  statement {
+    actions = ["dynamodb:Query"]
+    resources = [
+      "${aws_dynamodb_table.tasks_table.arn}/index/byOwner"
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "appsync_invoke_lambda_inline_policy" {
+  statement {
+    actions = ["lambda:InvokeFunction"]
+    resources = [
+      aws_lambda_function.add_task_lambda_function.arn
+    ]
+  }
+}
+
+resource "aws_iam_role" "appsync_datasource_role" {
+  name = "appsync_datasource_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "appsync.amazonaws.com"
+        }
+      },
+    ]
+  })
+  inline_policy {
+    name   = "appsync_query_index_inline"
+    policy = data.aws_iam_policy_document.appsync_query_index_inline.json
+  }
+  inline_policy {
+    name   = "appsync_invoke_lambda_inline"
+    policy = data.aws_iam_policy_document.appsync_invoke_lambda_inline_policy.json
+  }
+}
+
+resource "aws_appsync_datasource" "tasks_table_datasource" {
+  api_id           = aws_appsync_graphql_api.graphql_api.id
+  name             = "TasksTableDataSource"
+  type             = "AMAZON_DYNAMODB"
+  service_role_arn = aws_iam_role.appsync_datasource_role.arn
+  dynamodb_config {
+    table_name = aws_dynamodb_table.tasks_table.name
+    region     = "us-east-1"
+  }
+}
+
+resource "aws_appsync_resolver" "get_tasks_resolver" {
+  api_id = aws_appsync_graphql_api.graphql_api.id
+  type   = "Query"
+  field  = "getTasks"
+  runtime {
+    name            = "APPSYNC_JS"
+    runtime_version = "1.0.0"
+  }
+  code        = file("resolvers/getTasks.js")
+  data_source = aws_appsync_datasource.tasks_table_datasource.name
 }
 
 resource "aws_appsync_datasource" "add_task_datasource" {
@@ -218,7 +218,7 @@ resource "aws_lambda_function" "post_confirmation_lambda_function" {
 }
 
 resource "aws_lambda_permission" "allow_cognito" {
-  statement_id  = "AllowExecutionFromCloudWatch"
+  statement_id  = "AllowExecutionFromCognito"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.post_confirmation_lambda_function.function_name
   principal     = "cognito-idp.amazonaws.com"
