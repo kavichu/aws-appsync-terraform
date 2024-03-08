@@ -13,5 +13,6 @@ terraform {
 }
 
 module "appsync_api" {
-  source = "./modules/appsync"
+  source = "./appsync"
+  region = "us-east-1" # var.region
 }

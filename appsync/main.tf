@@ -170,7 +170,7 @@ resource "aws_appsync_datasource" "tasks_table_datasource" {
   service_role_arn = aws_iam_role.appsync_datasource_role.arn
   dynamodb_config {
     table_name = aws_dynamodb_table.tasks_table.name
-    region     = "us-east-1"
+    region     = var.region
   }
 }
 
