@@ -75,7 +75,7 @@ resource "aws_appsync_graphql_api" "graphql_api" {
 
 }
 
-data "aws_iam_policy_document" "lambda_inline_policy" {
+data "aws_iam_policy_document" "lambda_put_item_policy" {
   statement {
     actions = ["dynamodb:PutItem"]
     resources = [
@@ -102,8 +102,8 @@ resource "aws_iam_role" "lambda_execution_role" {
   managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
 
   inline_policy {
-    name   = "lambda_inline"
-    policy = data.aws_iam_policy_document.lambda_inline_policy.json
+    name   = "lambda_put_item_inline"
+    policy = data.aws_iam_policy_document.lambda_put_item_policy.json
   }
 }
 
