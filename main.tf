@@ -6,7 +6,6 @@ terraform {
     }
   }
   backend "s3" {
-    bucket = "appsync-terraform-backend"
     key    = "state/terraform.tfstate"
     region = "us-east-1"
   }
@@ -14,5 +13,5 @@ terraform {
 
 module "appsync_api" {
   source = "./appsync"
-  region = "us-east-1" # var.region
+  region = "us-east-1"
 }
